@@ -10,7 +10,7 @@ Of course, it knows how to format conventional line comments, as well.
 
 ## Usage
 
-This tool is design to be used from within an editor; eg. you're piping a code
+This tool is designed to be used from within an editor; eg. you're piping a code
 block into it and replacing that input with this tool's output.
 
 I used `par` for formatting text, but it has some deficiencies when it comes to
