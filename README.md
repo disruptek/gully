@@ -21,7 +21,7 @@ of dividing the screen vertically.
 ```nim
 when defined(debug):
   const logLevel = lvlDebug
-elif defined(release) or defined(danger):
+elif defined(release):
   const logLevel = lvlNotice
 else:
   const logLevel = lvlInfo
