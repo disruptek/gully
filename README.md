@@ -94,15 +94,21 @@ else:                                       # you are probably interested in the
 - `--remove` finds your comment block and erases it; use with care!
 - `--center` center the comment text in its block; defaults to `off`
 - `--right-align` aligns the comments to the `--max-right` column
-- `--strip` toggle whitespace-stripping; defaults to `on`
-- `--borders` an integer representing border count: `1`, `2`, or `4`; defaults to `1`
+- `--strip-whitespace` toggle whitespace-stripping; defaults to `on`
+- `--borders` enable borders on the `Left` (the default), `Both`, or `All`
 - `--flow` just flow my comments to maximize space and don't try to align them vertically; defaults to `off`
-- `--padding` provide a margin of at least this many characters between the comment gully and the code; defaults to `3`
-- `--grow` allow the comments to escape the block and flow `above` the code (the default), `below` the code, or `both`
-- `--gravity` whether to afford more space to the `code`, the `comments` (the default)
+- `--padding` provide a margin of at least this many characters between the comment gully and the code; defaults to `2`
+- `--grow` allow the comments to escape the block and flow `Above` the code (the default), `below` the code, or `both`
+- `--shrink` when wrapping text, greedily move subsequent comments to fill new lines; defaults to `on`
+- `--gravity` whether to afford more space to the `Code` or the `Comments` (the default)
+- `--indent` align the left side of a full-line comment to adjacent code blocks; defaults to `on`
 - `--thick` try to utilize all the columns first, and then grow in height; defaults to `off`
 - `--thin` try to utilize all the lines first, and then grow in width; defaults to `off`
-- `--justify` justify the comments
+- `--justify` justify the comments; defaults to `off`
+- `--start` a token to use for a multi-line comment lead-in; defaults to `#[`
+- `--stop` a token to use for a multi-line comment lead-out; defaults to `]#`
+- `--lead` a token to use for a multi-line leader; defaults to `  `
+- `--gully` toggle creating the embedded content block; defaults to `on`
 
 ## License
 MIT
