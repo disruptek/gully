@@ -43,7 +43,7 @@ else:                          #
 ### Input
 ```nim
 when defined(debug):           # if you want debugging, we'll give you debugging!  otherwise,
-  const logLevel = lvlDebug    # if this a production build, we think you only want notices+.
+  const logLevel = lvlDebug    # if this is a production build, we think you only want >= notices.
 elif defined(release):         #   otherwise, you are probably
   const logLevel = lvlNotice   #  interested in
 else:                          # the extra
