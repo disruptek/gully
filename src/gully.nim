@@ -519,7 +519,7 @@ proc outputErrors*(parsed: seq[ClParse]) =
   for parse in parsed:
     if parse.status in {clOk}:
       continue
-    error $parse
+    log(lvlError, $parse)
 
 when isMainModule:
   let
