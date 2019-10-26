@@ -119,5 +119,8 @@ Options(opt-arg sep :|=|spc):
   -d, --dry-run          bool         false     copy input to stdout and result to stderr
   --log-level=           Level        lvlDebug  set the log level
 
+## Library Use
+There are some procedures exported for your benefit; see [the documentation for the module as generated directly from the source](https://disruptek.github.io/gully/gully.html).
+
 ## License
 MIT
