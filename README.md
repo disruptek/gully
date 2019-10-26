@@ -84,7 +84,6 @@ else:                                       # you are probably interested in the
 ## Command-Line Options
 
 ```
-$ gully --help                                                                                               22:17
 Usage:
   gully [optional-params] 
 a code comment formatter
