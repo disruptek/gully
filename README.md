@@ -86,29 +86,38 @@ else:                                       # you are probably interested in the
 ```
 
 ## Command-Line Options
-
-- `--max-width` specify the desired width of your source; defaults to `80`
-- `--min-width` do nothing if you cannot achieve a gully of at least this width; defaults to `16`
-- `--syntax` specify the syntax for your EOL comments; defaults to `#`
-- `--wrap` toggle word-wrapping; defaults to `on`
-- `--remove` finds your comment block and erases it; use with care!
-- `--center` center the comment text in its block; defaults to `off`
-- `--right-align` aligns the comments to the `--max-right` column
-- `--strip-whitespace` toggle whitespace-stripping; defaults to `on`
-- `--borders` enable borders on the `Left` (the default), `Both`, or `All`
-- `--flow` just flow my comments to maximize space and don't try to align them vertically; defaults to `off`
-- `--padding` provide a margin of at least this many characters between the comment gully and the code; defaults to `2`
-- `--grow` allow the comments to escape the block and flow `Above` the code (the default), `below` the code, or `both`
-- `--shrink` when wrapping text, greedily move subsequent comments to fill new lines; defaults to `on`
-- `--gravity` whether to afford more space to the `Code` or the `Comments` (the default)
-- `--indent` align the left side of a full-line comment to adjacent code blocks; defaults to `on`
-- `--thick` try to utilize all the columns first, and then grow in height; defaults to `off`
-- `--thin` try to utilize all the lines first, and then grow in width; defaults to `off`
-- `--justify` justify the comments; defaults to `off`
-- `--start` a token to use for a multi-line comment lead-in; defaults to `#[`
-- `--stop` a token to use for a multi-line comment lead-out; defaults to `]#`
-- `--lead` a token to use for a multi-line leader; defaults to `  `
-- `--gully` toggle creating the embedded content block; defaults to `on`
+$ gully --help                                                                                               22:17
+Usage:
+  gully [optional-params] 
+a code comment formatter
+Options(opt-arg sep :|=|spc):
+  -h, --help                                    print this cligen-erated help
+  --help-syntax                                 advanced: prepend,plurals,..
+  -m=, --max-width=      int          80        the desired width of your source
+  --min-width=           int          16        the minimum size of comment area to add
+  -t=, --tab-size=       int          2         the width of your tabulators in spaces
+  -p=, --padding=        int          2         margin of spaces between code and comments
+  -s=, --syntax=         string       "#"       the syntax for your EOL comments
+  --header=              string       "#["      token which begins multi-line comments
+  -f=, --footer=         string       "]#"      token which ends multi-line comments
+  -l=, --leader=         string       "  "      token which precedes multi-line comment lines
+  -g=, --grow-lines=     Preposition  Above     directions in which to add needed new lines
+  -i, --indent           bool         true      left-align comments to column of nearby code
+  --flow-mo              bool         false     make no attempt to vertically align comments
+  -r, --remove-comments  bool         false     strip all comments discovered in the input
+  -w, --word-wrap        bool         true      enable breaking long lines on whitespace
+  -c, --center-text      bool         false     surround comments with equal whitespace
+  -a, --align-right      bool         false     align comments to the right margin of source
+  --strip-whitespace     bool         true      strip leading and trailing whitespace
+  -b=, --borders=        Preposition  Left      sides on which to add comment token borders
+  --shrink-wrap          bool         true      merge adjacent comments when wrapping
+  -j, --justify          bool         false     begin and end comments at column boundaries
+  --thick                bool         false     grow comments by width before height
+  --thin                 bool         false     grow comments by height before width
+  --gravity=             ContentKind  Comments  cede extra space to `Code` or `Comments`
+  --gully                bool         true      create comments that share lines with code
+  -d, --dry-run          bool         false     copy input to stdout and result to stderr
+  --log-level=           Level        lvlDebug  set the log level
 
 ## License
 MIT
