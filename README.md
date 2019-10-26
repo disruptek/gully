@@ -13,10 +13,6 @@ Of course, it knows how to format conventional line comments, as well.
 This tool is designed to be used from within an editor; eg. you're piping a code
 block into it and replacing that input with this tool's output.
 
-I used `par` for formatting text, but it has some deficiencies when it comes to
-formatting comments, especially those adjacent to code. Also, it has no concept
-of dividing the screen vertically.
-
 ### Input
 ```nim
 when defined(debug):
@@ -123,7 +119,27 @@ Options(opt-arg sep :|=|spc):
 ```
 
 ## Library Use
-There are some procedures exported for your benefit; see [the documentation for the module as generated directly from the source](https://disruptek.github.io/gully/gully.html).
+
+There are some procedures exported for your benefit; see [the
+documentation for the module as generated directly from the
+source](https://disruptek.github.io/gully/gully.html).
+
+## Origin Story
+
+I used `par` for formatting text, but it has some deficiencies when it comes to
+formatting comments, especially those adjacent to code. Also, it has no concept
+of dividing the screen vertically.
+
+Formatting text is one of those deceptively difficult problems. It seems that
+everyone embarks on these tasks thinking it will be easy and quickly becomes
+mired in warts and corner cases.
+
+This will doubtless be one more example in the cavalcade of text formatting
+capers that end in disaster, but hey, I might learn something in the trying.
+
+If there's any wisdom in my approach, it's the realization that the product
+doesn't need to be _perfect_. It just needs to be _better_, and _not broken_.
+So we'll prioritize _not broken_, followed by _better_, on the way to _perfect_.
 
 ## License
 MIT
