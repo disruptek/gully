@@ -868,8 +868,14 @@ function main() {
     title="makeCliEntryProcedure(recipe: Recipe; nameIt: string): NimNode"><wbr />make<wbr />Cli<wbr />Entry<wbr />Procedure<span class="attachedType"></span></a></li>
   <li><a class="reference" href="#helpText%2CRecipe"
     title="helpText(recipe: Recipe): HelpText"><wbr />help<wbr />Text<span class="attachedType"></span></a></li>
-  <li><a class="reference" href="#tweakFromArgumentOrder%2CRecipe%2Cseq%5BT%5D%5BClParse%5D"
-    title="tweakFromArgumentOrder(recipe: var Recipe; parsed: seq[ClParse])"><wbr />tweak<wbr />From<wbr />Argument<wbr />Order<span class="attachedType"></span></a></li>
+  <li><a class="reference" href="#considerArgumentOrder%2CRecipe%2Cseq%5BT%5D%5BClParse%5D"
+    title="considerArgumentOrder(recipe: var Recipe; parsed: seq[ClParse])"><wbr />consider<wbr />Argument<wbr />Order<span class="attachedType"></span></a></li>
+  <li><a class="reference" href="#includesFailure%2Cseq%5BT%5D%5BClParse%5D"
+    title="includesFailure(parsed: seq[ClParse]): bool"><wbr />includes<wbr />Failure<span class="attachedType"></span></a></li>
+  <li><a class="reference" href="#%24%2CClParse"
+    title="`$`(parse: ClParse): string"><wbr />`$`<span class="attachedType"></span></a></li>
+  <li><a class="reference" href="#outputErrors%2Cseq%5BT%5D%5BClParse%5D"
+    title="outputErrors(parsed: seq[ClParse])"><wbr />output<wbr />Errors<span class="attachedType"></span></a></li>
   <li><a class="reference" href="#cliRecipe%2Cint%2Cint%2Cint%2Cint%2Cstring%2Cstring%2Cstring%2Cstring%2CPreposition%2Cbool%2Cbool%2Cbool%2Cbool%2Cbool%2Cbool%2Cbool%2CPreposition%2Cbool%2Cbool%2Cbool%2Cbool%2CContentKind%2Cbool%2Cbool%2CLevel"
     title="cliRecipe(max_width: int = 80; min_width: int = 16; tab_size: int = 2; padding: int = 2;
           syntax: string = &quot;#&quot;; header: string = &quot;#[&quot;; footer: string = &quot;]#&quot;;
@@ -1038,12 +1044,33 @@ create a new entry procedure for <tt class="docutils literal"><span class="pre">
 generate help text from a recipe; see also <tt class="docutils literal"><span class="pre">keyValueToHelp</span></tt>
 
 </dd>
-<a id="tweakFromArgumentOrder,Recipe,seq[T][ClParse]"></a>
-<dt><pre><span class="Keyword">proc</span> <a href="#tweakFromArgumentOrder%2CRecipe%2Cseq%5BT%5D%5BClParse%5D"><span class="Identifier">tweakFromArgumentOrder</span></a><span class="Other">(</span><span class="Identifier">recipe</span><span class="Other">:</span> <span class="Keyword">var</span> <span class="Identifier">Recipe</span><span class="Other">;</span> <span class="Identifier">parsed</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">ClParse</span><span class="Other">]</span><span class="Other">)</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span>
-    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
+<a id="considerArgumentOrder,Recipe,seq[T][ClParse]"></a>
+<dt><pre><span class="Keyword">proc</span> <a href="#considerArgumentOrder%2CRecipe%2Cseq%5BT%5D%5BClParse%5D"><span class="Identifier">considerArgumentOrder</span></a><span class="Other">(</span><span class="Identifier">recipe</span><span class="Other">:</span> <span class="Keyword">var</span> <span class="Identifier">Recipe</span><span class="Other">;</span> <span class="Identifier">parsed</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">ClParse</span><span class="Other">]</span><span class="Other">)</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma">
+    <span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">KeyError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
 <dd>
 
+lookup the arguments and register them, in order, in the recipe
 
+</dd>
+<a id="includesFailure,seq[T][ClParse]"></a>
+<dt><pre><span class="Keyword">proc</span> <a href="#includesFailure%2Cseq%5BT%5D%5BClParse%5D"><span class="Identifier">includesFailure</span></a><span class="Other">(</span><span class="Identifier">parsed</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">ClParse</span><span class="Other">]</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">bool</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
+<dd>
+
+true if the list of parsed options includes a failure
+
+</dd>
+<a id="$,ClParse"></a>
+<dt><pre><span class="Keyword">proc</span> <a href="#%24%2CClParse"><span class="Identifier">`$`</span></a><span class="Other">(</span><span class="Identifier">parse</span><span class="Other">:</span> <span class="Identifier">ClParse</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
+<dd>
+
+render a parse result
+
+</dd>
+<a id="outputErrors,seq[T][ClParse]"></a>
+<dt><pre><span class="Keyword">proc</span> <a href="#outputErrors%2Cseq%5BT%5D%5BClParse%5D"><span class="Identifier">outputErrors</span></a><span class="Other">(</span><span class="Identifier">parsed</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">ClParse</span><span class="Other">]</span><span class="Other">)</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
+<dd>
+
+report command-line parse errors to the user
 
 </dd>
 <a id="cliRecipe,int,int,int,int,string,string,string,string,Preposition,bool,bool,bool,bool,bool,bool,bool,Preposition,bool,bool,bool,bool,ContentKind,bool,bool,Level"></a>
@@ -1057,8 +1084,8 @@ generate help text from a recipe; see also <tt class="docutils literal"><span cl
               <span class="Identifier">justify</span><span class="Other">:</span> <span class="Identifier">bool</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span> <span class="Identifier">thick</span><span class="Other">:</span> <span class="Identifier">bool</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span> <span class="Identifier">thin</span><span class="Other">:</span> <span class="Identifier">bool</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span>
               <span class="Identifier">gravity</span><span class="Other">:</span> <span class="Identifier">ContentKind</span> <span class="Other">=</span> <span class="Identifier">ContentKind</span><span class="Other">(</span><span class="DecNumber">1</span><span class="Other">)</span><span class="Other">;</span> <span class="Identifier">gully</span><span class="Other">:</span> <span class="Identifier">bool</span> <span class="Other">=</span> <span class="Identifier">true</span><span class="Other">;</span>
               <span class="Identifier">dry_run</span><span class="Other">:</span> <span class="Identifier">bool</span> <span class="Other">=</span> <span class="Identifier">false</span><span class="Other">;</span> <span class="Identifier">log_level</span><span class="Other">:</span> <span class="Identifier">Level</span> <span class="Other">=</span> <span class="Identifier">Level</span><span class="Other">(</span><span class="DecNumber">2</span><span class="Other">)</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">int</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma">
-    <span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Defect</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">KeyError</span><span class="Other">]</span><span class="Other">,</span>
-    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
+    <span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">Defect</span><span class="Other">,</span> <span class="Identifier">IOError</span><span class="Other">,</span> <span class="Identifier">OSError</span><span class="Other">,</span> <span class="Identifier">ValueError</span><span class="Other">,</span> <span class="Identifier">KeyError</span><span class="Other">]</span><span class="Other">,</span>
+    <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
 <dd>
 
 generated by a macro for use by cligen
@@ -1093,7 +1120,7 @@ create a cli entry with the given body
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br/>
-        <small>Made with Nim. Generated: 2019-10-26 02:50:33 UTC</small>
+        <small>Made with Nim. Generated: 2019-10-26 03:43:30 UTC</small>
       </div>
     </div>
   </div>

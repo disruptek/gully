@@ -55,6 +55,10 @@ type
     DryRun
     LogLevel
 
+  ConstraintType = range[MaxWidth .. TabSize]
+  GoalType = range[WordWrap .. Gully]
+  FlagType = range[DryRun .. LogLevel]
+
   Preposition = enum
     Left, Right
     Top, Bottom
@@ -81,12 +85,6 @@ const
   Goals = {WordWrap .. Gully}
   Flags {.used.} = {DryRun .. LogLevel}
 
-when false:
-  type
-    ConstraintType = range[MaxWidth .. TabSize]
-    GoalType = range[WordWrap .. Gully]
-    FlagType = range[DryRun .. LogLevel]
-
 type
   Mutation = ref object
     switch: ref string
@@ -106,8 +104,11 @@ type
       level: Level
 
   Recipe = ref object
-    #flags: set[FlagType]
     mutations: OrderedTableRef[MutationKind, Mutation]
+    arguments: TableRef[string, MutationKind]
+    constraints: seq[ConstraintType]   ## requested constraints, in order
+    goals: seq[GoalType]               ## requested goals, in order
+    flags: set[FlagType]               ## requested flags
 
 type
   ## a top-level type representing either the input or the output
@@ -301,6 +302,7 @@ proc `[]=`*(recipe: Recipe; kind: MutationKind; mutation: Mutation) =
   ## a singular entry for mutations into the recipe
   assert kind notin recipe.mutations
   recipe.mutations[kind] = mutation
+  recipe.arguments[--mutation] = kind
 
 proc add*[T](recipe: Recipe; kind: MutationKind; value: T) {.used.} =
   ## used at runtime to instantiate new mutations in the cligen'd proc
@@ -325,6 +327,7 @@ proc newRecipe*(): Recipe =
   ## create a new ``Recipe`` and prepare it for ``Mutation``
   new result
   result.mutations = newOrderedTable[MutationKind, Mutation]()
+  result.arguments = newTable[string, MutationKind]()
 
 proc switchIdent*(switch: string): NimNode =
   ## turn a string into its suitable ident"long_option"
@@ -491,11 +494,48 @@ when declaredInScope(defaultRecipe):
     result = makeCliEntryProcedure(defaultRecipe, name)
     result.body.add body
 
+proc orderedMutation(recipe: Recipe; kind: MutationKind): bool =
+  case kind:
+  of Constraints:
+    result = kind in recipe.constraints
+  of Goals:
+    result = kind in recipe.goals
+  of Flags:
+    result = kind in recipe.flags
+
+proc orderMutation(recipe: var Recipe; kind: MutationKind) =
+  case kind:
+  of Constraints:
+    recipe.constraints.add kind
+  of Goals:
+    recipe.goals.add kind
+  of Flags:
+    recipe.flags.incl kind
+
 when declaredInScope(cligen):
-  proc tweakFromArgumentOrder*(recipe: var Recipe; parsed: seq[ClParse]) =
-    # now we have our recipe and the parsed stuff;
-    # sort the argument order...
-    discard
+  proc considerArgumentOrder*(recipe: var Recipe; parsed: seq[ClParse]) =
+    ## lookup the arguments and register them, in order, in the recipe
+    for parse in parsed:
+      let
+        kind = recipe.arguments[parse.paramName.replace("_", "-")]
+      if recipe.orderedMutation(kind):
+        raise newException(ValueError, &"duplicate mutation {kind} specified")
+      recipe.orderMutation(kind)
+
+    # now we'll add in anything that the user didn't specify
+    #
+    # we use the order defined in the recipe to ensure that whatever
+    # wisdom it holds is reproduced here
+
+    # so, traverse the recipe's mutations in order
+    for mutation in recipe.values:
+      # obviously, we'll skip unspecified flags,
+      if mutation.kind in Flags:
+        continue
+      # but otherwise, as long as it's unique
+      if not recipe.orderedMutation(mutation.kind):
+        # everything else is added
+        recipe.orderMutation(mutation.kind)
 
 proc includesFailure*(parsed: seq[ClParse]): bool =
   ## true if the list of parsed options includes a failure
@@ -535,7 +575,11 @@ when isMainModule:
 
   cliEntryProcedureBody("cliRecipe"):
     # mutate the recipe according to the order of arguments on the cli
-    recipe.tweakFromArgumentOrder(parsed)
+    try:
+      recipe.considerArgumentOrder(parsed)
+    except ValueError as e:
+      log(lvlError, e.msg)
+      return 1
 
     let
       # load the input into a new document
