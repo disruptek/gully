@@ -557,9 +557,13 @@ proc `$`*(parse: ClParse): string =
 proc outputErrors*(parsed: seq[ClParse]) =
   ## report command-line parse errors to the user
   for parse in parsed:
-    if parse.status in {clOk}:
-      continue
-    log(lvlError, $parse)
+    case parse.status:
+    of clOk:
+      discard
+    of clHelpOnly, clVersionOnly:
+      log(lvlFatal, $parse)
+    else:
+      log(lvlError, $parse)
 
 when isMainModule:
   let
