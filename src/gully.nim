@@ -497,12 +497,14 @@ when declaredInScope(cligen):
     # sort the argument order...
     discard
 
-proc includesFailure(parsed: seq[ClParse]): bool =
+proc includesFailure*(parsed: seq[ClParse]): bool =
+  ## true if the list of parsed options includes a failure
   for parse in parsed:
     if parse.status != clOk:
       return true
 
-proc `$`(parse: ClParse): string =
+proc `$`*(parse: ClParse): string =
+  ## render a parse result
   when true:
     result = parse.message
   else:
@@ -512,11 +514,12 @@ proc `$`(parse: ClParse): string =
     else:
       result = &"{parse.paramName}: {parse.message}"
 
-proc outputParseErrors(parsed: seq[ClParse]; output: File) =
+proc outputErrors*(parsed: seq[ClParse]) =
+  ## report command-line parse errors to the user
   for parse in parsed:
     if parse.status in {clOk}:
       continue
-    output.writeLine $parse
+    error $parse
 
 when isMainModule:
   let
@@ -565,6 +568,6 @@ when isMainModule:
     when declaredInScope(defaultCommandLine):
       let result = defaultCommandLine()
       if parsed.includesFailure:
-        parsed.outputParseErrors(stdmsg())
+        parsed.outputErrors()
 
       quit result
