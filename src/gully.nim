@@ -1,10 +1,22 @@
 import macros
 import streams
-import strutils
+import strutils except Whitespace
 import strformat
 import tables
 
 import gully/cutelog
+import gully/parser
+
+const
+  logLevel =
+    when defined(debug):
+      lvlDebug
+    elif defined(release):
+      lvlNotice
+    elif defined(danger):
+      lvlNotice
+    else:
+      lvlInfo
 
 when isMainModule:
 
@@ -16,29 +28,28 @@ when isMainModule:
 
   import cligen
 
-const
-  # recall that
-  # Newlines = {'\c', '\n'} per strutils
-  EndOfLine = Whitespace - {' ', '\t', '\v'}
-
 type
-  MutationKind = enum
+  DuplicateOption* = object of ValueError
+
+  MutationKind* = enum
 
     # constraints
     MaxWidth
     MinWidth
     Padding
-    Syntax
+    Language
     Flow
     Header
     Footer
     Leader
+#    Alternate
     Indent
     Grow
     TabSize
 
     # goals
     WordWrap
+#    Cycle
     Remove
     Center
     AlignR
@@ -48,18 +59,22 @@ type
     Justify
     Thick
     Thin
+#   Tiny
+#   Huge
     Gravity
     Gully
 
     # flags
     DryRun
+#    Statistics
+#    Verbose
     LogLevel
 
   ConstraintType = range[MaxWidth .. TabSize]
   GoalType = range[WordWrap .. Gully]
   FlagType = range[DryRun .. LogLevel]
 
-  Preposition = enum
+  Preposition* = enum
     Left, Right
     Top, Bottom
     Both, Any,
@@ -68,13 +83,25 @@ type
     Inside, Outside
     Near, Far
 
-  ContentKind = enum Code, Comments, Whitespace
+  Content* = enum Code, Comments, Whitespace
+
+  MultiLinedness = enum mlNone, mlHeader, mlFooter, mlLeader
 
   HelpText = seq[tuple[switch: string; help: string]]
 
+  Lang = enum
+    Nim = "nim"
+    C = "c"
+    Cpp = "c++"
+    Go = "go"
+    Python = "python"
+    Js = "js"
+    CSharp = "c#"
+
 const
   IntegerMutants = {MaxWidth, MinWidth, Padding, TabSize}
-  StringMutants = {Syntax, Header, Footer, Leader}
+  StringMutants = {Header, Footer, Leader}
+  LanguageMutants = {Language}
   BooleanMutants = {Flow, WordWrap, Remove, Center, AlignR, Strip, Shrink,
                     Justify, Thick, Thin, Indent, Gully, DryRun}
   PrepositionMutants = {Border, Grow}
@@ -83,52 +110,65 @@ const
 
   Constraints = {MaxWidth .. TabSize}
   Goals = {WordWrap .. Gully}
-  Flags {.used.} = {DryRun .. LogLevel}
+  Flags = {DryRun .. LogLevel}
 
 type
-  Mutation = ref object
-    switch: ref string
-    help: ref string
-    case kind: MutationKind:
+  Mutation* = ref object
+    source*: SourceKind
+    switch*: ref string
+    help*: ref string
+    case kind*: MutationKind:
     of IntegerMutants:
-      integer: int
+      integer*: int
     of StringMutants:
-      text: string
+      text*: string
     of BooleanMutants:
-      boolean: bool
+      boolean*: bool
     of PrepositionMutants:
-      prep: Preposition
+      prep*: Preposition
     of ContentMutants:
-      content: ContentKind
+      content*: Content
     of LogLevelMutants:
-      level: Level
+      level*: Level
+    of LanguageMutants:
+      lang*: Lang
 
-  Recipe = ref object
+  Recipe* = ref object
     mutations: OrderedTableRef[MutationKind, Mutation]
     arguments: TableRef[string, MutationKind]
     constraints: seq[ConstraintType]   ## requested constraints, in order
     goals: seq[GoalType]               ## requested goals, in order
     flags: set[FlagType]               ## requested flags
 
-type
   ## a top-level type representing either the input or the output
-  Document = ref object
+  Document* = ref object
     recipe: Recipe             ## a collection of mutations to perform
-    lines: LineGroup           ## adjacent lines that comprise the document
+    groups: seq[LineGroup]     ## consecutive groups of adjacent lines
 
   ## it's sometimes useful to operate on a group of adjacent lines
   LineGroup = ref object
     group: seq[Line]
     maxLen: int
 
-  ## a Document is comprised of Lines
+  ## a LineGroup is comprised of Lines
   Line = ref object
     indent: int                ## the point at which whitespace ends
     input: string              ## the line before we applied any mutation
     work: string               ## the line after mutation; lacks terminator
     terminator: string         ## the string that signifies the EOL
+    multi: set[MultiLinedness] ## the varieties of multi-linedness here
 
-proc `--`(mutation: Mutation): string =
+  Score* = int
+
+  Improvement* = ref object
+    original*: Document
+    improved*: Document
+    recipe*: Recipe
+    score*: Score
+
+  SourceKind* = enum UserProvided, Backfilled
+
+proc `--`*(mutation: Mutation): string =
   ## convenience to render the mutation as a command-line switch
   if mutation.switch == nil:
     result = toLowerAscii($mutation.kind)
@@ -147,20 +187,22 @@ iterator items(lines: LineGroup): Line =
 
 iterator items(document: Document): Line =
   ## iterate over lines in a ``Document``
-  for line in document.lines.items:
-    yield line
+  for group in document.groups.items:
+    for line in group:
+      yield line
 
 proc `$`(line: Line): string =
   result = line.input
 
-proc len(line: Line): int =
+proc len*(line: Line): int =
   result = line.work.len + line.terminator.len
 
-proc len(lines: LineGroup): int =
+proc len*(lines: LineGroup): int =
   result = lines.group.len
 
-proc len(document: Document): int =
-  result = document.lines.len
+proc len*(document: Document): int =
+  for group in document.groups.items:
+    result.inc group.len
 
 proc `$`*(document: Document): string =
   var
@@ -199,18 +241,19 @@ proc add(lines: LineGroup; line: Line) =
   lines.group.add line
   lines.maxLen = max(lines.maxLen, line.len)
 
-proc add*(document: Document; line: Line) =
-  ## add a ``Line`` to a ``Document``
-  document.lines.add line
-
 proc newLineGroup*(): LineGroup =
   ## create a new ``LineGroup``
   new result
 
+proc add*(document: Document; line: Line) =
+  ## add a ``Line`` to a ``Document``
+  if document.groups.len == 0:
+    document.groups.add newLineGroup()
+  document.groups[^1].add line
+
 proc newDocument*(): Document =
   ## make a new ``Document``
   new result
-  result.lines = newLineGroup()
 
 proc newDocument*(stream: Stream): Document =
   ## make a new ``Document``; populate it from an input ``Stream``
@@ -220,9 +263,9 @@ proc newDocument*(stream: Stream): Document =
   for line in input.splitLines(keepEol = true):
     result.add newLine(line)
 
-proc newMutation*(kind: MutationKind): Mutation =
+proc newMutation*(kind: MutationKind; source = Backfilled): Mutation =
   ## all mutations are instantiated here
-  result = Mutation(kind: kind)
+  result = Mutation(kind: kind, source: source)
 
 proc defaultNode(mutation: Mutation): NimNode {.compileTime.} =
   ## the value of the mutation as a ``NimNode``
@@ -239,6 +282,8 @@ proc defaultNode(mutation: Mutation): NimNode {.compileTime.} =
     result = newLit(mutation.content)
   of LogLevelMutants:
     result = newLit(mutation.level)
+  of LanguageMutants:
+    result = newLit(mutation.lang)
 
 proc typeName(kind: MutationKind): string =
   ## the type name for the value of the mutation
@@ -252,9 +297,11 @@ proc typeName(kind: MutationKind): string =
   of PrepositionMutants:
     result = "Preposition"
   of ContentMutants:
-    result = "ContentKind"
+    result = "Content"
   of LogLevelMutants:
     result = "Level"
+  of LanguageMutants:
+    result = "Lang"
 
 proc typeName(mutation: Mutation): string =
   ## the type name for the value of the mutation
@@ -284,8 +331,8 @@ proc newMutation(kind: MutationKind; value: Preposition): Mutation =
   result = newMutation(kind)
   result.prep = value
 
-proc newMutation(kind: MutationKind; value: ContentKind): Mutation =
-  ## create a ``ContentKind`` mutation
+proc newMutation(kind: MutationKind; value: Content): Mutation =
+  ## create a ``Content`` mutation
   result = newMutation(kind)
   result.content = value
 
@@ -294,8 +341,13 @@ proc newMutation(kind: MutationKind; value: Level): Mutation =
   result = newMutation(kind)
   result.level = value
 
+proc newMutation(kind: MutationKind; value: Lang): Mutation =
+  ## create a ``Language`` mutation
+  result = newMutation(kind)
+  result.lang = value
+
 proc `[]`*(recipe: Recipe; kind: MutationKind): Mutation =
-  ## convenience syntax for fetching the given mutation
+  ## convenience language for fetching the given mutation
   result = recipe.mutations[kind]
 
 proc `[]=`*(recipe: Recipe; kind: MutationKind; mutation: Mutation) =
@@ -342,14 +394,7 @@ proc toIdentDefs*(mutation: Mutation): NimNode =
   result = newIdentDefs(mutation.switchIdent, mutation.typeDef,
                         mutation.defaultNode)
 
-when defined(debug):
-  const logLevel = lvlDebug
-elif defined(release) or defined(danger):
-  const logLevel = lvlNotice
-else:
-  const logLevel = lvlInfo
-
-proc createDefaultRecipe*(): Recipe {.compileTime.} =
+proc createDefaultRecipe*(): Recipe =
   ## enumerate the default recipe, setting defaults and help text
   result = newRecipe()
 
@@ -362,14 +407,14 @@ proc createDefaultRecipe*(): Recipe {.compileTime.} =
     "the width of your tabulators in spaces"
   result.add Padding, 2, "padding",
     "margin of spaces between code and comments"
-  result.add Syntax, "#", "syntax",
-    "the syntax for your EOL comments"
   result.add Header, "#[", "header",
     "token which begins multi-line comments"
   result.add Footer, "]#", "footer",
     "token which ends multi-line comments"
   result.add Leader, "  ", "leader",
     "token which precedes multi-line comment lines"
+  result.add Language, Nim, "language",
+    "the syntax to use for your comments"
   result.add Grow, Above, "grow-lines",
     "directions in which to add needed new lines"
   result.add Indent, on, "indent",
@@ -377,12 +422,14 @@ proc createDefaultRecipe*(): Recipe {.compileTime.} =
   result.add Flow, off, "flow-mo",
     "make no attempt to vertically align comments"
 
-  for kind in Constraints:
-    if kind notin result:
-      error &"{kind} defined too late"
-  for mutation in result.values:
-    if mutation.kind notin Constraints:
-      error &"{mutation.kind} defined too early"
+  when defined(debug):
+    # make sure we've defined constraints in the right place
+    for kind in Constraints:
+      assert kind in result,
+        &"{kind} defined too late"
+    for mutation in result.values:
+      assert mutation.kind in Constraints,
+        &"{mutation.kind} defined too early"
 
   # next, enumerate soft goals
   result.add Remove, off, "remove-comments",
@@ -410,14 +457,15 @@ proc createDefaultRecipe*(): Recipe {.compileTime.} =
   result.add Gully, on, "gully",
     "create comments that share lines with code"
 
-  # make sure we've defined goals in the right place
-  for kind in Goals:
-    if kind notin result:
-      error &"{kind} defined too late"
-  for mutation in result.values:
-    if mutation.kind notin Constraints:
-      if mutation.kind notin Goals:
-        error &"{mutation.kind} defined too early"
+  when defined(debug):
+    # make sure we've defined goals in the right place
+    for kind in Goals:
+      assert kind in result,
+        &"{kind} defined too late"
+    for mutation in result.values:
+      if mutation.kind notin Constraints:
+        assert mutation.kind in Goals,
+          &"{mutation.kind} defined too early"
 
   # flags can go last
   result.add DryRun, off, "dry-run",
@@ -425,13 +473,15 @@ proc createDefaultRecipe*(): Recipe {.compileTime.} =
   result.add LogLevel, logLevel, "log-level",
     "set the log level"
 
-  for kind in MutationKind.low .. MutationKind.high:
-    if kind notin result:
-      error &"failed to define {kind}"
-    when defined(debug):
-      let mutation = result[kind]
-      hint &"{kind} --{--mutation}: {mutation.typeName} " &
-                                &"= {mutation.defaultNode.repr}"
+  when defined(debug):
+    # now make sure we're not forgetting something
+    for kind in MutationKind.low .. MutationKind.high:
+      assert kind in result,
+        &"failed to define {kind}"
+      when false:
+        let mutation = result[kind]
+        hint &"{kind} --{--mutation}: {mutation.typeName} " &
+                                  &"= {mutation.defaultNode.repr}"
 
 proc makeCliEntryProcedure*(recipe: Recipe; nameIt: string): NimNode {.compileTime.} =
   ## create a new entry procedure for ``cligen`` using the given ``Recipe``
@@ -442,7 +492,7 @@ proc makeCliEntryProcedure*(recipe: Recipe; nameIt: string): NimNode {.compileTi
     params: seq[NimNode]
 
   # put something useful in the doc comments
-  body.add newCommentStmtNode("generated by a macro for use by cligen")
+  body.add newCommentStmtNode("(generated by a macro for use by cligen)")
 
   # the procedure will return an int
   params.add ident"int"
@@ -454,6 +504,7 @@ proc makeCliEntryProcedure*(recipe: Recipe; nameIt: string): NimNode {.compileTi
   # var recipe = newRecipe()
   body.add newVarStmt(ident"recipe", newCall(ident"newRecipe"))
 
+  # add each cli option to the proc parameters
   for mutation in recipe.values:
     params.add mutation.toIdentDefs
     let
@@ -463,7 +514,8 @@ proc makeCliEntryProcedure*(recipe: Recipe; nameIt: string): NimNode {.compileTi
       addcall = recipeadd.newCall(newLit(mutation.kind),
                                   mutation.switchIdent,
                                   newLit(--mutation))
-    # add result.add(...) to the body
+    # add result.add(...) to the body; this is where
+    # we add the mutation and its value to the recipe
     body.add addcall
 
   # proc cliRecipe(...): int = ...
@@ -495,6 +547,7 @@ when declaredInScope(defaultRecipe):
     result.body.add body
 
 proc orderedMutation(recipe: Recipe; kind: MutationKind): bool =
+  ## true if the recipe calls for a given mutation
   case kind:
   of Constraints:
     result = kind in recipe.constraints
@@ -504,6 +557,7 @@ proc orderedMutation(recipe: Recipe; kind: MutationKind): bool =
     result = kind in recipe.flags
 
 proc orderMutation(recipe: var Recipe; kind: MutationKind) =
+  ## add the given mutation to the recipe, preserving order
   case kind:
   of Constraints:
     recipe.constraints.add kind
@@ -512,6 +566,21 @@ proc orderMutation(recipe: var Recipe; kind: MutationKind) =
   of Flags:
     recipe.flags.incl kind
 
+proc orderUnspecifiedOptions(recipe: var Recipe) =
+  ## order any options that the user didn't specify;
+
+  # we use the order defined in the recipe to ensure
+  # that whatever wisdom it holds is reproduced here
+  for mutation in recipe.values:
+    # obviously, we'll skip unspecified flags,
+    if mutation.kind in Flags:
+      continue
+    # but otherwise, as long as it's unique
+    if not recipe.orderedMutation(mutation.kind):
+      # everything else is added
+      recipe.orderMutation(mutation.kind)
+    assert recipe[mutation.kind].source == Backfilled
+
 when declaredInScope(cligen):
   proc considerArgumentOrder*(recipe: var Recipe; parsed: seq[ClParse]) =
     ## lookup the arguments and register them, in order, in the recipe
@@ -519,51 +588,48 @@ when declaredInScope(cligen):
       let
         kind = recipe.arguments[parse.paramName.replace("_", "-")]
       if recipe.orderedMutation(kind):
-        raise newException(ValueError, &"duplicate mutation {kind} specified")
+        # we really only know how to handle one
+        # instance of each mutation -- if that!
+        raise newException(DuplicateOption,
+                           &"duplicate option {kind} specified")
       recipe.orderMutation(kind)
+      recipe[kind].source = UserProvided
 
-    # now we'll add in anything that the user didn't specify
-    #
-    # we use the order defined in the recipe to ensure that whatever
-    # wisdom it holds is reproduced here
+  proc includesFailure*(parsed: seq[ClParse]): bool =
+    ## true if the list of parsed options includes a failure
+    for parse in parsed:
+      if parse.status != clOk:
+        return true
 
-    # so, traverse the recipe's mutations in order
-    for mutation in recipe.values:
-      # obviously, we'll skip unspecified flags,
-      if mutation.kind in Flags:
-        continue
-      # but otherwise, as long as it's unique
-      if not recipe.orderedMutation(mutation.kind):
-        # everything else is added
-        recipe.orderMutation(mutation.kind)
-
-proc includesFailure*(parsed: seq[ClParse]): bool =
-  ## true if the list of parsed options includes a failure
-  for parse in parsed:
-    if parse.status != clOk:
-      return true
-
-proc `$`*(parse: ClParse): string =
-  ## render a parse result
-  when true:
-    result = parse.message
-  else:
-    case parse.status:
-    of clHelpOnly, clVersionOnly:
+  proc `$`*(parse: ClParse): string =
+    ## render a parse result
+    when true:
       result = parse.message
     else:
-      result = &"{parse.paramName}: {parse.message}"
+      case parse.status:
+      of clHelpOnly, clVersionOnly:
+        result = parse.message
+      else:
+        result = &"{parse.paramName}: {parse.message}"
 
-proc outputErrors*(parsed: seq[ClParse]) =
-  ## report command-line parse errors to the user
-  for parse in parsed:
-    case parse.status:
-    of clOk:
-      discard
-    of clHelpOnly, clVersionOnly:
-      log(lvlFatal, $parse)
-    else:
-      log(lvlError, $parse)
+  proc outputErrors*(parsed: seq[ClParse]) =
+    ## report command-line parse errors to the user
+    for parse in parsed:
+      case parse.status:
+      of clOk:
+        discard
+      of clHelpOnly, clVersionOnly:
+        log(lvlFatal, $parse)
+      else:
+        log(lvlError, $parse)
+
+proc newImprovement(recipe: Recipe;
+                    original: Document; improved: Document): Improvement =
+  result = Improvement(recipe: recipe, original: original, improved: improved)
+
+iterator improvements(recipe: Recipe; original: Document): Improvement =
+  ## produce improved versions of the original document for consideration
+  yield recipe.newImprovement(original, original)
 
 when isMainModule:
   let
@@ -581,9 +647,12 @@ when isMainModule:
     # mutate the recipe according to the order of arguments on the cli
     try:
       recipe.considerArgumentOrder(parsed)
-    except ValueError as e:
+    except DuplicateOption as e:
       log(lvlError, e.msg)
       return 1
+
+    # add in the other available options as per their defaults
+    recipe.orderUnspecifiedOptions()
 
     let
       # load the input into a new document
@@ -596,6 +665,10 @@ when isMainModule:
     # document to stdout in the event of a failure somewhere
     defer:
       stdout.write($output)
+
+    for applied in recipe.improvements(output):
+      debug "improvement scores", $applied.score
+      output = applied.improved
 
     if DryRun in recipe and recipe[DryRun].boolean:
       debug "dry run; dump to stderr"
@@ -614,8 +687,15 @@ when isMainModule:
                 dispatchName = "defaultCommandLine")
 
     when declaredInScope(defaultCommandLine):
-      let result = defaultCommandLine()
-      if parsed.includesFailure:
-        parsed.outputErrors()
-
-      quit result
+      try:
+        let result = defaultCommandLine()
+        when false:
+          # this shouldn't be necessary with newest cligen
+          if parsed.includesFailure:
+            parsed.outputErrors()
+        quit result
+      except ParseError:
+        discard
+      except HelpOnly:
+        discard
+      quit 1
