@@ -66,7 +66,6 @@ proc parseDocument*(input: string; syntax: Syntax = nil): ParsedDocument =
   # FIXME: cleanup, cache peg
   let
     peggy = peg "document":
-      any <- +Alpha | +Print | +1 | 0
       # one pound
       lb <- '#'
       # two pounds
@@ -78,68 +77,62 @@ proc parseDocument*(input: string; syntax: Syntax = nil): ParsedDocument =
       #[ multi-line code comments ]#
       begcML <- lb * mlo
       endcML <- mlc * lb
-      #mlcComment <- begcML * >!endcML * endcML:
-      #mlcComment <- begcML * >(*1 - endcML) * endcML:
-      mlcComment <- begcML * >(any - endcML) * endcML:
+      mlcComment <- begcML * >*(1 - endcML) * endcML:
         record.series.add (kind: MlCode, text: $1)
 
       # multi-line doc comments
       begdML <- lblb * mlo
       enddML <- mlc * lblb
-      mldComment <- begdML * >(*1 - enddML) * enddML:
+      mldComment <- begdML * >*(1 - enddML) * enddML:
         record.series.add (kind: MlDocs, text: $1)
 
       # thus, any multi-line comment
-      mlComment <- mldComment | mlcComment
+      multiline <- mldComment | mlcComment
 
-      white <- +{'\t', ' '}
+      white <- {'\t', ' '}
       nl <- ?'\r' * '\n'
       text <- 1 - nl
+
+      # we don't notate newlines inside multi-line comments
       newline <- >nl:
         record.series.add (kind: Newline, text: $1)
 
-      # eol comments
-      notcML <- lb - (begcML | begdML)
-      isEolComment <- notcML * *text * nl
-      eolComment <- notcML * >*text * &nl:
+      # code comments like this one
+      codComment <- lb * >*text:
         record.series.add (kind: Comment, text: $1)
 
       # doc comments
-      notdML <- lblb - (begcML | begdML)
-      isDocComment <- notdML * *text * nl
-      docComment <- notdML * >*text * &nl:
+      docComment <- lblb * >*text:
         record.series.add (kind: Docs, text: $1)
 
-      # testing for comments; for fence reasons
-      isComment <- &isDocComment | &isEolComment
-
       # capturing the comments
-      capComment <- docComment | eolComment
+      comment <- docComment | codComment
 
-      # significant blanks precede text
-      blanks <- >white * &text:
+      # significant blanks precede non-blank text
+      blanks <- >+white - !white - nl:
         record.series.add (kind: Blank, text: $1)
 
-      # significant text may be preceded by blanks
-      significant <- ?blanks * +text - &isComment
-
-      # code is a series of significant text
-      code <- >+significant - &isComment:
+      # code can terminate at an lb
+      code <- >+(text - lb):
         record.series.add (kind: Code, text: $1)
 
-      # content is a multi-line comment or other significant text
-      content <- mlComment | code
+      # indent precedes content; it may have multi-line comments in it
+      indent <- multiline | blanks
 
-      # we might remove blank captures eventually
-      commentline <- >white * capComment:
-        record.series.add (kind: Blank, text: $1)
+      # content follows indent; it may have multi-line comments in it
+      content <- multiline | code
 
-      # lines may end with a comment before they
-      # even get going with significant text
-      contentline <- *content * ?capComment
+      # a line with whitespace or less
+      emptyline <- *white * newline
 
-      # don't even capture lines with just whitespace
-      line <- (white | commentline | contentline) * newline
+      # a line with optional indent, code, comments
+      fullline <- *indent * *content * ?comment * newline
+
+      # lines holding only whitespace are parsed as Blank⏎
+      #line <- fullline | emptyline
+
+      # lines holding only whitespace are parsed as ⏎
+      line <- emptyline | fullline
 
       # documents are comprised of 1+ lines
       document <- +line * !1
