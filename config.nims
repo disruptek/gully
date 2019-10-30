@@ -9,3 +9,4 @@
 #switch("define", "npegDebug")
 #switch("define", "npegExpand")
 switch("define", "debug")
+switch("nimCache", ".cache")
