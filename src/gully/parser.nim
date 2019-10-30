@@ -14,11 +14,14 @@ type
     docs*: string
     eolc*: string
     tabsize*: int
-    header*: string
-    footer*: string
-    leader*: string
+    cheader*: string
+    cfooter*: string
+    cleader*: string
+    dheader*: string
+    dfooter*: string
+    dleader*: string
 
-  Token {.pure.} = enum
+  Token* {.pure.} = enum
     Blank
     Code
     Comment
@@ -27,7 +30,7 @@ type
     MlDocs
     Newline = "⏎"
 
-  TokenText = tuple
+  TokenText* = tuple
     kind: Token
     text: string
 
@@ -55,14 +58,22 @@ proc parseDocument*(input: string; syntax: Syntax = nil): ParsedDocument =
   var
     syn: Syntax
 
+  # use nim syntax if none is provided
   if syntax == nil:
     syn = Syntax(docs: "##", eolc: "#", tabsize: 2,
-                 header: "#[", footer: "]#", leader: "# ")
+                 cheader: "#[", cfooter: "]#", cleader: "# ",
+                 dheader: "##[", dfooter: "]##", dleader: "## ")
   else:
     syn = syntax
 
+  # we need well-formed input in order to parse the document
+  if input.len == 0 or input[^1] != '\n':
+    raise newException(ValueError, "parseable documents terminate with a newline")
+
+  # accumulate a record of tokens and their values in this result
   var
     record = ParsedDocument(ok: false, syntax: syn)
+
   # FIXME: cleanup, cache peg
   let
     peggy = peg "document":
@@ -137,10 +148,7 @@ proc parseDocument*(input: string; syntax: Syntax = nil): ParsedDocument =
       # documents are comprised of 1+ lines
       document <- +line * !1
 
-  # FIXME: clean up this testing stuff
   let
-    parsed = peggy.match(input & "\n")
+    parsed = peggy.match(input)
   record.ok = parsed.ok
-  if not parsed.ok:
-    stdmsg().writeLine parsed.repr
   result = record

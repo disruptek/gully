@@ -57,7 +57,7 @@ suite "parser":
       }.toOrderedTable
     for text, expected in inputs.pairs:
       let
-        parsed = parseDocument(text)
+        parsed = parseDocument(text & "\n")
       if not parsed.ok or $parsed.asTokenList != expected:
         checkpoint "input: `" & text & "`"
         checkpoint "expected: `" & expected & "`"
@@ -82,7 +82,7 @@ suite "parser":
       }.toOrderedTable
     for text, expected in inputs.pairs:
       let
-        parsed = parseDocument(text)
+        parsed = parseDocument(text & "\n")
       if not parsed.ok or $parsed.render != expected:
         checkpoint "input: `" & text & "`"
         checkpoint "expected: " & expected
