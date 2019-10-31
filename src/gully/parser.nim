@@ -38,12 +38,42 @@ type
     lhs*: int
     rhs*: int
 
+  LineLengths* = object
+    blanks*: int
+    code*: int
+    text*: int
+
 proc `$`*(tokens: seq[Token]): string =
   for t in tokens:
     if result.len != 0:
       if t != Newline:
         result &= ","
     result &= $t
+
+proc len*(tt: TokenText): int =
+  ## return the length of the token text including any delimiter syntax
+  result = tt.text.len + tt.lhs + tt.rhs
+
+proc lengths*(token: TokenText): LineLengths =
+  ## tally the lengths of single token/text
+  case token.kind:
+  of Blank:
+    result.blanks = token.len
+  of Code:
+    result.code = token.len
+  of Docs, Comment, MlDocs, MlCode:
+    result.text = token.len
+  of Newline:
+    discard
+
+proc lengths*(series: seq[TokenText]): LineLengths =
+  ## tally the lengths of a series of token/text
+  for tt in series.items:
+    let
+      lens = tt.lengths
+    result.blanks.inc lens.blanks
+    result.code.inc lens.code
+    result.text.inc lens.text
 
 proc render*(series: seq[TokenText]; syntax: Syntax): string =
   ## render a series of token/text in the given syntax
