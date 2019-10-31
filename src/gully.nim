@@ -456,7 +456,7 @@ proc createDefaultRecipe*(): Recipe =
     "token which precedes multi-line comment lines"
   result.add Language, Nim, "language",
     "the syntax to use for your comments"
-  result.add Grow, Above, "grow-lines",
+  result.add Grow, Above, "grow",
     "directions in which to add needed new lines"
   result.add Indent, on, "indent",
     "left-align comments to column of nearby code"
@@ -473,7 +473,7 @@ proc createDefaultRecipe*(): Recipe =
         &"{mutation.kind} defined too early"
 
   # next, enumerate soft goals
-  result.add Remove, off, "remove-comments",
+  result.add Remove, off, "remove",
     "strip all comments discovered in the input"
   result.add WordWrap, on, "word-wrap",
     "enable breaking long lines on whitespace"
@@ -481,7 +481,7 @@ proc createDefaultRecipe*(): Recipe =
     "surround comments with equal whitespace"
   result.add AlignR, off, "align-right",
     "align comments to the right margin of source"
-  result.add Strip, on, "strip-whitespace",
+  result.add Strip, on, "strip",
     "strip leading and trailing whitespace"
   result.add Border, Left, "borders",
     "sides on which to add comment token borders"
