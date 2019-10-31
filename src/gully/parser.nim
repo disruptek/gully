@@ -1,4 +1,6 @@
 import strutils
+import streams
+
 import npeg
 
 const
@@ -30,9 +32,11 @@ type
     MlDocs
     Newline = "⏎"
 
-  TokenText* = tuple
-    kind: Token
-    text: string
+  TokenText* = object
+    kind*: Token
+    text*: string
+    lhs*: int
+    rhs*: int
 
 proc `$`*(tokens: seq[Token]): string =
   for t in tokens:
@@ -41,11 +45,31 @@ proc `$`*(tokens: seq[Token]): string =
         result &= ","
     result &= $t
 
+proc render*(series: seq[TokenText]; syntax: Syntax): string =
+  ## render a series of token/text in the given syntax
+  for tt in series.items:
+    case tt.kind:
+    of Comment:
+      result &= syntax.eolc & tt.text
+    of Docs:
+      result &= syntax.docs & tt.text
+    of MlCode:
+      result &= syntax.cheader & tt.text & syntax.cfooter
+    of MlDocs:
+      result &= syntax.dheader & tt.text & syntax.dfooter
+    else:
+      result &= tt.text
+
+proc render*(document: ParsedDocument; syntax: Syntax): string =
+  ## render a parsed document in the given syntax
+  result = document.series.render(syntax)
+
 proc asTokenList*(parsed: ParsedDocument): seq[Token] =
   for tt in parsed.series:
     result.add tt.kind
 
 proc render*(parsed: ParsedDocument): string =
+  ## render a parsed document for testing
   for tt in parsed.series:
     if result.len > 0:
       result &= ", "
@@ -88,14 +112,16 @@ proc parseDocument*(input: string; syntax: Syntax = nil): ParsedDocument =
       #[ multi-line code comments ]#
       begcML <- lb * mlo
       endcML <- mlc * lb
-      mlcComment <- begcML * >*(1 - endcML) * endcML:
-        record.series.add (kind: MlCode, text: $1)
+      mlcComment <- >begcML * >*(1 - endcML) * >endcML:
+        record.series.add TokenText(kind: MlCode,
+                                    text: $2, lhs: len($1), rhs: len($3))
 
       # multi-line doc comments
       begdML <- lblb * mlo
       enddML <- mlc * lblb
-      mldComment <- begdML * >*(1 - enddML) * enddML:
-        record.series.add (kind: MlDocs, text: $1)
+      mldComment <- >begdML * >*(1 - enddML) * >enddML:
+        record.series.add TokenText(kind: MlDocs,
+                                    text: $2, lhs: len($1), rhs: len($3))
 
       # thus, any multi-line comment
       multiline <- mldComment | mlcComment
@@ -106,26 +132,26 @@ proc parseDocument*(input: string; syntax: Syntax = nil): ParsedDocument =
 
       # we don't notate newlines inside multi-line comments
       newline <- >nl:
-        record.series.add (kind: Newline, text: $1)
+        record.series.add TokenText(kind: Newline, text: $1)
 
       # code comments like this one
-      codComment <- lb * >*text:
-        record.series.add (kind: Comment, text: $1)
+      codComment <- >lb * >*text:
+        record.series.add TokenText(kind: Comment, text: $2, lhs: len($1))
 
       # doc comments
-      docComment <- lblb * >*text:
-        record.series.add (kind: Docs, text: $1)
+      docComment <- >lblb * >*text:
+        record.series.add TokenText(kind: Docs, text: $2, lhs: len($1))
 
       # capturing the comments
       comment <- docComment | codComment
 
       # significant blanks precede non-blank text
       blanks <- >+white - !white - nl:
-        record.series.add (kind: Blank, text: $1)
+        record.series.add TokenText(kind: Blank, text: $1)
 
       # code can terminate at an lb
       code <- >+(text - lb):
-        record.series.add (kind: Code, text: $1)
+        record.series.add TokenText(kind: Code, text: $1)
 
       # indent precedes content; it may have multi-line comments in it
       indent <- multiline | blanks
@@ -152,3 +178,23 @@ proc parseDocument*(input: string; syntax: Syntax = nil): ParsedDocument =
     parsed = peggy.match(input)
   record.ok = parsed.ok
   result = record
+
+proc parseDocument*(stream: Stream; syntax: Syntax = nil): ParsedDocument =
+  ## parse a stream into tokens
+  let
+    input = stream.readAll
+  result = input.parseDocument(syntax)
+
+iterator items*(parsed: ParsedDocument): seq[TokenText] =
+  ## iterate over lines (of tokens) in a parsed document
+  var
+    index = 0
+    line: seq[TokenText]
+
+  while index < parsed.series.len:
+    line.add parsed.series[index]
+    if parsed.series[index].kind == Newline:
+      yield line
+      line = @[]
+    index.inc
+  assert parsed.series[^1].kind == Newline

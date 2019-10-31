@@ -3,6 +3,7 @@ import streams
 import strutils except Whitespace
 import strformat
 import tables
+import random
 
 import gully/cutelog
 import gully/parser
@@ -50,6 +51,7 @@ type
     # goals
     WordWrap
 #    Cycle
+#    Fence
     Remove
     Center
     AlignR
@@ -59,6 +61,7 @@ type
     Justify
     Thick
     Thin
+    Hoist
 #   Tiny
 #   Huge
     Gravity
@@ -66,6 +69,7 @@ type
 
     # flags
     DryRun
+    Jiggle
 #    Statistics
 #    Verbose
     LogLevel
@@ -89,7 +93,7 @@ type
 
   HelpText = seq[tuple[switch: string; help: string]]
 
-  Lang = enum
+  Lang* = enum
     Nim = "nim"
     C = "c"
     Cpp = "c++"
@@ -103,7 +107,8 @@ const
   StringMutants = {Header, Footer, Leader}
   LanguageMutants = {Language}
   BooleanMutants = {Flow, WordWrap, Remove, Center, AlignR, Strip, Shrink,
-                    Justify, Thick, Thin, Indent, Gully, DryRun}
+                    Justify, Thick, Thin, Indent, Hoist, Gully, DryRun,
+                    Jiggle}
   PrepositionMutants = {Border, Grow}
   ContentMutants = {Gravity}
   LogLevelMutants = {LogLevel}
@@ -144,6 +149,7 @@ type
   Document* = ref object
     recipe: Recipe             ## a collection of mutations to perform
     groups: seq[LineGroup]     ## consecutive groups of adjacent lines
+    syntax: Syntax
 
   ## it's sometimes useful to operate on a group of adjacent lines
   LineGroup = ref object
@@ -157,8 +163,10 @@ type
     work: string               ## the line after mutation; lacks terminator
     terminator: string         ## the string that signifies the EOL
     multi: set[MultiLinedness] ## the varieties of multi-linedness here
+    tokens: seq[TokenText]     ## the parsed contents of the line
 
-  Score* = int
+  Score* = range[0.0 .. 1.0]
+  ScoreCard* = OrderedTableRef[MutationKind, Score]
 
   Improvement* = ref object
     original*: Document
@@ -185,17 +193,19 @@ iterator items(lines: LineGroup): Line =
   for line in lines.group.items:
     yield line
 
-iterator items(document: Document): Line =
+iterator items*(document: Document): Line =
   ## iterate over lines in a ``Document``
   for group in document.groups.items:
     for line in group:
       yield line
 
-proc `$`(line: Line): string =
-  result = line.input
+when false:
+  proc `$`(line: Line): string =
+    result = line.input
 
 proc len*(line: Line): int =
-  result = line.work.len + line.terminator.len
+  for tt in line.tokens:
+    result.inc tt.text.len + tt.lhs + tt.rhs
 
 proc len*(lines: LineGroup): int =
   result = lines.group.len
@@ -213,28 +223,48 @@ proc `$`*(document: Document): string =
     if count == size:
       if line.terminator.len == 0:
         break
-    debug &"{count}: {line.work} + terminator of {line.terminator.len}"
-    result &= $line
+    when defined(debug):
+      debug &"{count}: " &
+        line.tokens.render(document.syntax).strip(leading = false)
+    result &= line.tokens.render(document.syntax)
     count.inc
 
-proc terminator(line: string): string =
-  ## any combination of newline characters terminating the string
-  for i in line.low .. line.high:
-    if i < line.len:
-      if line[^(i + 1)] in EndOfLine:
-        result = line[^(i + 1)] & result
+when false:
+  proc `$`*(document: Document): string =
+    var
+      count: int
+      size = document.len
+    for line in document.items:
+      # if the last line is empty, lacking even a terminator, omit it from output
+      if count == size:
+        if line.terminator.len == 0:
+          break
+      debug &"{count}: {line.work} + terminator of {line.terminator.len}"
+      result &= $line
+      count.inc
 
-proc newLine(content: string): Line =
-  ## create a new ``Line``
-  var
-    terminator = content.terminator
-    work: string
-  if terminator.len == 0:
-    work = content
-  else:
-    work = content[0 .. ^(terminator.len + 1)]
-  result = Line(input: content, work: work,
-                terminator: terminator)
+  proc terminator(line: string): string =
+    ## any combination of newline characters terminating the string
+    for i in line.low .. line.high:
+      if i < line.len:
+        if line[^(i + 1)] in EndOfLine:
+          result = line[^(i + 1)] & result
+
+  proc newLine(content: string): Line {.deprecated.} =
+    var
+      terminator = content.terminator
+      work: string
+    if terminator.len == 0:
+      work = content
+    else:
+      work = content[0 .. ^(terminator.len + 1)]
+    result = Line(input: content, work: work,
+                  terminator: terminator)
+
+proc newLine(input: seq[TokenText]): Line =
+  ## create a new ``Line`` from a series of tokens
+  result = Line(tokens: input,
+                terminator: input[^1].text)
 
 proc add(lines: LineGroup; line: Line) =
   ## add a ``Line`` to the ``LineGroup``
@@ -255,12 +285,23 @@ proc newDocument*(): Document =
   ## make a new ``Document``
   new result
 
-proc newDocument*(stream: Stream): Document =
-  ## make a new ``Document``; populate it from an input ``Stream``
-  result = newDocument()
-  var
+proc newDocument*(recipe: Recipe; stream: Stream): Document =
+  ## create a Document using a Recipe for syntax and a Stream for input
+  let
     input = stream.readAll
-  for line in input.splitLines(keepEol = true):
+    syntax: Syntax = nil # FIXME: get a syntax
+
+  result = newDocument()
+  result.syntax = syntax
+
+  if input == "":
+    return
+
+  let
+    parsed = input.parseDocument(syntax)
+  if parsed.ok == false:
+    raise newException(ValueError, "unable to parse input")
+  for line in parsed.items:
     result.add newLine(line)
 
 proc newMutation*(kind: MutationKind; source = Backfilled): Mutation =
@@ -448,6 +489,8 @@ proc createDefaultRecipe*(): Recipe =
     "merge adjacent comments when wrapping"
   result.add Justify, off, "justify",
     "begin and end comments at column boundaries"
+  result.add Hoist, on, "hoist",
+    "move multiline comments to their own lines"
   result.add Thick, off, "thick",
     "grow comments by width before height"
   result.add Thin, off, "thin",
@@ -470,6 +513,8 @@ proc createDefaultRecipe*(): Recipe =
   # flags can go last
   result.add DryRun, off, "dry-run",
     "copy input to stdout and result to stderr"
+  result.add Jiggle, off, "jiggle",
+    "subtly tweak by randomizing option order"
   result.add LogLevel, logLevel, "log-level",
     "set the log level"
 
@@ -556,8 +601,9 @@ proc orderedMutation(recipe: Recipe; kind: MutationKind): bool =
   of Flags:
     result = kind in recipe.flags
 
-proc orderMutation(recipe: var Recipe; kind: MutationKind) =
+proc orderMutation(recipe: var Recipe; kind: MutationKind; source: SourceKind) =
   ## add the given mutation to the recipe, preserving order
+  assert kind in recipe, "inconceivable!"
   case kind:
   of Constraints:
     recipe.constraints.add kind
@@ -565,6 +611,9 @@ proc orderMutation(recipe: var Recipe; kind: MutationKind) =
     recipe.goals.add kind
   of Flags:
     recipe.flags.incl kind
+  recipe[kind].source = source
+  if source == UserProvided:
+    debug "--> user added", kind
 
 proc orderUnspecifiedOptions(recipe: var Recipe) =
   ## order any options that the user didn't specify;
@@ -578,8 +627,13 @@ proc orderUnspecifiedOptions(recipe: var Recipe) =
     # but otherwise, as long as it's unique
     if not recipe.orderedMutation(mutation.kind):
       # everything else is added
-      recipe.orderMutation(mutation.kind)
-    assert recipe[mutation.kind].source == Backfilled
+      recipe.orderMutation(mutation.kind, Backfilled)
+
+  # if the user wants to jiggle, let's dance
+  if Jiggle in recipe:
+    if recipe[Jiggle].boolean:
+      randomize()
+      recipe.goals.shuffle
 
 when declaredInScope(cligen):
   proc considerArgumentOrder*(recipe: var Recipe; parsed: seq[ClParse]) =
@@ -592,8 +646,7 @@ when declaredInScope(cligen):
         # instance of each mutation -- if that!
         raise newException(DuplicateOption,
                            &"duplicate option {kind} specified")
-      recipe.orderMutation(kind)
-      recipe[kind].source = UserProvided
+      recipe.orderMutation(kind, UserProvided)
 
   proc includesFailure*(parsed: seq[ClParse]): bool =
     ## true if the list of parsed options includes a failure
@@ -623,13 +676,74 @@ when declaredInScope(cligen):
       else:
         log(lvlError, $parse)
 
+when false:
+  proc orderLength(recipe: Recipe): int =
+    ## the number of affective mutations in the recipe
+    result = recipe.constraints.len + recipe.goals.len
+
+iterator order(recipe: Recipe): Mutation =
+  ## yield mutations in appropriate order based upon input, role
+  for kind in recipe.constraints:
+    yield recipe[kind]
+  for kind in recipe.goals:
+    yield recipe[kind]
+
+proc score(mutation: Mutation; document: Document): Score =
+  var
+    score: float
+  case mutation.kind:
+  of MaxWidth:
+    for group in document.groups:
+      if group.maxLen <= mutation.integer:
+        score += 1.0
+    if score.int != document.groups.len:
+      result = 0.5
+      debug "score 0.5"
+    elif score > 0.0:
+      result = score / document.groups.len.Score
+      debug "score calced", result
+    else:
+      result = 0.0
+  of Language, Header, Footer, Leader, TabSize, Padding:
+    result = 1.0
+  else:
+    # FIXME: this should eventually be a defect
+    #raise newException(Defect, &"{mutation.kind} scoring unimplemented")
+    warn &"{mutation.kind} scoring unimplemented"
+    result = 1.0
+
+proc tally(card: ScoreCard): Score =
+  ## tally a scorecard
+  var
+    score = 1.0 # nothin' from nothin' leaves nothin'
+  for s in card.values:
+    score = score * 2.0 + s
+    if score > 0.0:
+      score = score / 3.0
+  result = score
+
+proc score(recipe: Recipe; document: Document): Score =
+  ## calculate a score for the document
+  var
+    card: ScoreCard = newOrderedTable[MutationKind, Score](32)
+  # each successfive metric is worth half as much to the final result
+  for mutation in recipe.order:
+    card[mutation.kind] = mutation.score(document)
+  result = card.tally
+
 proc newImprovement(recipe: Recipe;
                     original: Document; improved: Document): Improvement =
   result = Improvement(recipe: recipe, original: original, improved: improved)
 
 iterator improvements(recipe: Recipe; original: Document): Improvement =
   ## produce improved versions of the original document for consideration
-  yield recipe.newImprovement(original, original)
+  var
+    head = original
+    next = original
+  var
+    improvement = recipe.newImprovement(head, next)
+  improvement.score = recipe.score(next)
+  yield improvement
 
 when isMainModule:
   let
@@ -656,7 +770,7 @@ when isMainModule:
 
     let
       # load the input into a new document
-      original = newDocument(stdin.newFileStream)
+      original = recipe.newDocument(stdin.newFileStream)
     var
       # we'll start with simply outputing the original input
       output = original
