@@ -6,7 +6,7 @@ import tables
 import random
 from sugar import `=>`, `->`
 
-import gully/cutelog
+import cutelog
 import gully/parser
 
 const
