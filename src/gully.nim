@@ -4,6 +4,7 @@ import strutils except Whitespace
 import strformat
 import tables
 import random
+from sugar import `=>`, `->`
 
 import gully/cutelog
 import gully/parser
@@ -119,6 +120,7 @@ const
 
 type
   Mutation* = ref object
+    recipe*: Recipe
     source*: SourceKind
     switch*: ref string
     help*: ref string
@@ -153,11 +155,13 @@ type
 
   ## it's sometimes useful to operate on a group of adjacent lines
   LineGroup = ref object
+    document: Document
     group: seq[Line]
     maxLen: int
 
   ## a LineGroup is comprised of Lines
   Line = ref object
+    document: Document
     indent: int                ## the point at which whitespace ends
     input: string              ## the line before we applied any mutation
     work: string               ## the line after mutation; lacks terminator
@@ -229,103 +233,6 @@ proc `$`*(document: Document): string =
     result &= line.tokens.render(document.syntax)
     count.inc
 
-when false:
-  proc `$`*(document: Document): string =
-    var
-      count: int
-      size = document.len
-    for line in document.items:
-      # if the last line is empty, lacking even a terminator, omit it from output
-      if count == size:
-        if line.terminator.len == 0:
-          break
-      debug &"{count}: {line.work} + terminator of {line.terminator.len}"
-      result &= $line
-      count.inc
-
-  proc terminator(line: string): string =
-    ## any combination of newline characters terminating the string
-    for i in line.low .. line.high:
-      if i < line.len:
-        if line[^(i + 1)] in EndOfLine:
-          result = line[^(i + 1)] & result
-
-  proc newLine(content: string): Line {.deprecated.} =
-    var
-      terminator = content.terminator
-      work: string
-    if terminator.len == 0:
-      work = content
-    else:
-      work = content[0 .. ^(terminator.len + 1)]
-    result = Line(input: content, work: work,
-                  terminator: terminator)
-
-proc newLine(input: seq[TokenText]): Line =
-  ## create a new ``Line`` from a series of tokens
-  result = Line(tokens: input,
-                terminator: input[^1].text)
-
-proc add(lines: LineGroup; line: Line) =
-  ## add a ``Line`` to the ``LineGroup``
-  lines.group.add line
-  lines.maxLen = max(lines.maxLen, line.len)
-
-proc newLineGroup*(): LineGroup =
-  ## create a new ``LineGroup``
-  new result
-
-proc add*(document: Document; line: Line) =
-  ## add a ``Line`` to a ``Document``
-  if document.groups.len == 0:
-    document.groups.add newLineGroup()
-  document.groups[^1].add line
-
-proc newDocument*(): Document =
-  ## make a new ``Document``
-  new result
-
-proc newDocument*(recipe: Recipe; stream: Stream): Document =
-  ## create a Document using a Recipe for syntax and a Stream for input
-  let
-    input = stream.readAll
-    syntax: Syntax = nil # FIXME: get a syntax
-
-  result = newDocument()
-  result.syntax = syntax
-
-  if input == "":
-    return
-
-  let
-    parsed = input.parseDocument(syntax)
-  if parsed.ok == false:
-    raise newException(ValueError, "unable to parse input")
-  for line in parsed.items:
-    result.add newLine(line)
-
-proc newMutation*(kind: MutationKind; source = Backfilled): Mutation =
-  ## all mutations are instantiated here
-  result = Mutation(kind: kind, source: source)
-
-proc defaultNode(mutation: Mutation): NimNode {.compileTime.} =
-  ## the value of the mutation as a ``NimNode``
-  case mutation.kind:
-  of IntegerMutants:
-    result = newLit(mutation.integer)
-  of StringMutants:
-    result = newLit(mutation.text)
-  of BooleanMutants:
-    result = newLit(mutation.boolean)
-  of PrepositionMutants:
-    result = newLit(mutation.prep)
-  of ContentMutants:
-    result = newLit(mutation.content)
-  of LogLevelMutants:
-    result = newLit(mutation.level)
-  of LanguageMutants:
-    result = newLit(mutation.lang)
-
 proc typeName(kind: MutationKind): string =
   ## the type name for the value of the mutation
   case kind:
@@ -351,6 +258,10 @@ proc typeName(mutation: Mutation): string =
 proc typeDef(mutation: Mutation): NimNode {.compileTime.} =
   ## produce an ident node referring to the value type of the mutation
   result = newIdentNode(typeName(mutation))
+
+proc newMutation*(kind: MutationKind; source = Backfilled): Mutation =
+  ## all mutations are instantiated here
+  result = Mutation(kind: kind, source: source)
 
 proc newMutation(kind: MutationKind; value: int): Mutation =
   ## create an ``int`` mutation
@@ -394,6 +305,11 @@ proc `[]`*(recipe: Recipe; kind: MutationKind): Mutation =
 proc `[]=`*(recipe: Recipe; kind: MutationKind; mutation: Mutation) =
   ## a singular entry for mutations into the recipe
   assert kind notin recipe.mutations
+
+  # a link to the recipe is needed so that, for example, we can
+  # check the tab size when measuring whitespace from elsewhere
+  mutation.recipe = recipe
+
   recipe.mutations[kind] = mutation
   recipe.arguments[--mutation] = kind
 
@@ -421,6 +337,137 @@ proc newRecipe*(): Recipe =
   new result
   result.mutations = newOrderedTable[MutationKind, Mutation]()
   result.arguments = newTable[string, MutationKind]()
+
+when false:
+  proc `$`*(document: Document): string =
+    var
+      count: int
+      size = document.len
+    for line in document.items:
+      # if the last line is empty, lacking even a terminator, omit it from output
+      if count == size:
+        if line.terminator.len == 0:
+          break
+      debug &"{count}: {line.work} + terminator of {line.terminator.len}"
+      result &= $line
+      count.inc
+
+  proc terminator(line: string): string =
+    ## any combination of newline characters terminating the string
+    for i in line.low .. line.high:
+      if i < line.len:
+        if line[^(i + 1)] in EndOfLine:
+          result = line[^(i + 1)] & result
+
+  proc newLine(content: string): Line {.deprecated.} =
+    var
+      terminator = content.terminator
+      work: string
+    if terminator.len == 0:
+      work = content
+    else:
+      work = content[0 .. ^(terminator.len + 1)]
+    result = Line(input: content, work: work,
+                  terminator: terminator)
+
+proc newLine(document: Document; input: seq[TokenText]): Line =
+  ## create a new ``Line`` from a series of tokens
+  result = Line(tokens: input, document: document,
+                terminator: input[^1].text)
+
+proc shrinkable(line: Line): int =
+  ## the number of characters by which we can reduce line length
+  let
+    length = line.len
+  if length != 0:
+    result = lengths(line.tokens).text
+
+proc add(lines: LineGroup; line: Line) =
+  ## add a ``Line`` to the ``LineGroup``
+  lines.group.add line
+  lines.maxLen = max(lines.maxLen, line.len)
+
+proc newLineGroup*(document: Document): LineGroup =
+  ## create a new ``LineGroup``
+  result = LineGroup(document: document)
+
+proc add*(document: Document; line: Line) =
+  ## add a ``Line`` to a ``Document``
+  if document.groups.len == 0:
+    document.groups.add document.newLineGroup()
+  document.groups[^1].add line
+
+proc chooseSyntax*(recipe: Recipe): Syntax =
+  ## instantiate an appropriate syntax from the Recipe
+  assert TabSize in recipe
+  let
+    tabs = block:
+      if TabSize in recipe:
+        recipe[TabSize].integer
+      else:
+        13  # have fun with this lucky number
+  result = Syntax(docs: "##", eolc: "#", tabsize: tabs,
+                  cheader: "#[", cfooter: "]#", cleader: "# ",
+                  dheader: "##[", dfooter: "]##", dleader: "## ")
+
+proc newDocument(): Document =
+  ## make a new ``Document``
+  new result
+
+proc newDocument*(recipe: Recipe; input: string): Document =
+  ## create a Document using a Recipe for syntax and an input string
+  result = newDocument()
+  result.syntax = recipe.chooseSyntax()
+
+  if input == "":
+    return
+
+  let
+    parsed = input.parseDocument(result.syntax)
+  if parsed.ok == false:
+    raise newException(ValueError, "unable to parse input")
+  for line in parsed.items:
+    result.add result.newLine(line)
+
+proc newDocument*(recipe: Recipe; stream: Stream): Document =
+  ## create a Document using a Recipe for syntax and a Stream for input
+  result = recipe.newDocument(stream.readAll)
+
+proc defaultNode(mutation: Mutation): NimNode {.compileTime.} =
+  ## the value of the mutation as a ``NimNode``
+  case mutation.kind:
+  of IntegerMutants:
+    result = newLit(mutation.integer)
+  of StringMutants:
+    result = newLit(mutation.text)
+  of BooleanMutants:
+    result = newLit(mutation.boolean)
+  of PrepositionMutants:
+    result = newLit(mutation.prep)
+  of ContentMutants:
+    result = newLit(mutation.content)
+  of LogLevelMutants:
+    result = newLit(mutation.level)
+  of LanguageMutants:
+    result = newLit(mutation.lang)
+
+proc `$`*(mutation: Mutation): string =
+  result = $mutation.kind
+  case mutation.kind:
+  of IntegerMutants:
+    result &= &"={mutation.integer}"
+  of StringMutants:
+    result &= &"`{mutation.text}`"
+  of BooleanMutants:
+    result &= &"={mutation.boolean}"
+  of PrepositionMutants:
+    result &= &".{mutation.prep}"
+  of ContentMutants:
+    result &= &".{mutation.content}"
+  of LogLevelMutants:
+    result &= &".{mutation.level}"
+  of LanguageMutants:
+    result &= &".{mutation.lang}"
 
 proc switchIdent*(switch: string): NimNode =
   ## turn a string into its suitable ident"long_option"
@@ -613,7 +660,7 @@ proc orderMutation(recipe: var Recipe; kind: MutationKind; source: SourceKind) =
     recipe.flags.incl kind
   recipe[kind].source = source
   if source == UserProvided:
-    debug "--> user added", kind
+    debug &"user added {recipe[kind]}"
 
 proc orderUnspecifiedOptions(recipe: var Recipe) =
   ## order any options that the user didn't specify;
@@ -688,31 +735,102 @@ iterator order(recipe: Recipe): Mutation =
   for kind in recipe.goals:
     yield recipe[kind]
 
+proc canShrinkWithin(group: LineGroup; size: int): bool =
+  ## true if the group can shrink in width to <= given size
+  for line in group.items:
+    let l = line.len
+    if l > size:
+      if l - line.shrinkable > size:
+        return false
+
+proc scoreByLine[T: Document | LineGroup](many: T; mutation: Mutation;
+  predicate: (Mutation, Line) -> Score): Score =
+  ## all lines have the same weight (for now)
+  var
+    score: float
+    count: int
+  for line in many.items:
+    count.inc
+    score += predicate(mutation, line)
+  if count == 0:
+    result = 1.0
+  result = score / count.float
+
+proc scoreByGroup(document: Document; mutation: Mutation;
+                  predicate: (Mutation, LineGroup) -> Score): Score =
+  ## all groups have the same weight (for now)
+  var
+    score: float
+    count: int
+  for group in document.groups.items:
+    count.inc
+    score += predicate(mutation, group)
+  if count == 0:
+    result = 1.0
+  result = score / count.float
+
+proc measureTrailingWhitespace(text: string; tabSize: int): int =
+  ## does what it says on the tin!
+  for i in countDown(text.high, text.low):
+    if text[i] == '\t':
+      result.inc tabSize
+    elif text[i] in strutils.Whitespace:
+      result.inc
+    else:
+      break
+
+proc scorePadding(mutation: Mutation; line: Line): Score =
+  assert TabSize in mutation.recipe
+  result = 1.0
+  for index, value in line.tokens.pairs:
+    block:
+      # find any comments
+      if value.kind in {MlCode, MlDocs, Comment, Docs}:
+        # that aren't at the beginning of the line
+        if index > 0:
+          # and precede code
+          if line.tokens[index - 1].kind == Token.Code:
+            break
+      continue
+
+    let
+      ts = mutation.recipe[TabSize].integer
+      tw = measureTrailingWhitespace(line.tokens[index - 1].text,
+                                     tabSize = ts)
+    if tw < mutation.integer:
+      result = tw.float / mutation.integer.float
+    return
+
+proc scoreMaxWidth(mutation: Mutation; line: Line): Score =
+  let
+    l = line.len
+  result = 1.0
+  if l > mutation.integer:
+    result -= min(1.0, (l - mutation.integer).float / mutation.integer.float)
+  debug &"score for {mutation} is {result} and l is {l}"
+
 proc score(mutation: Mutation; document: Document): Score =
   var
     score: float
   case mutation.kind:
   of MaxWidth:
-    for group in document.groups:
-      if group.maxLen <= mutation.integer:
-        score += 1.0
-    if score.int != document.groups.len:
-      result = 0.5
-      debug "score 0.5"
-    elif score > 0.0:
-      result = score / document.groups.len.Score
-      debug "score calced", result
-    else:
-      result = 0.0
-  of Language, Header, Footer, Leader, TabSize, Padding:
+    # the lines should be no longer than X characters
+    result = document.scoreByLine(mutation, scoreMaxWidth)
+  of Padding:
+    # any eol comments should be separated from code by X characters
+    result = document.scoreByLine(mutation, scorePadding)
+  of Language, Header, Footer, Leader, TabSize:
     result = 1.0
   else:
     # FIXME: this should eventually be a defect
-    #raise newException(Defect, &"{mutation.kind} scoring unimplemented")
-    warn &"{mutation.kind} scoring unimplemented"
+    when false:
+      raise newException(Defect, &"{mutation.kind} scoring unimplemented")
+      warn &"{mutation.kind} scoring unimplemented"
     result = 1.0
+    return
+  debug &"score for {mutation} is {score}"
 
-proc tally(card: ScoreCard): Score =
+proc tally*(card: ScoreCard): Score =
   ## tally a scorecard
   var
     score = 1.0 # nothin' from nothin' leaves nothin'
@@ -722,14 +840,14 @@ proc tally(card: ScoreCard): Score =
       score = score / 3.0
   result = score
 
-proc score(recipe: Recipe; document: Document): Score =
+proc score*(recipe: Recipe; document: Document): ScoreCard =
   ## calculate a score for the document
-  var
-    card: ScoreCard = newOrderedTable[MutationKind, Score](32)
+  const tableSize = 32
+  assert ord(MutationKind.high) <= tableSize
+  result = newOrderedTable[MutationKind, Score](tableSize)
   # each successfive metric is worth half as much to the final result
   for mutation in recipe.order:
-    card[mutation.kind] = mutation.score(document)
-  result = card.tally
+    result[mutation.kind] = mutation.score(document)
 
 proc newImprovement(recipe: Recipe;
                     original: Document; improved: Document): Improvement =
@@ -742,7 +860,7 @@ iterator improvements(recipe: Recipe; original: Document): Improvement =
     next = original
   var
     improvement = recipe.newImprovement(head, next)
-  improvement.score = recipe.score(next)
+  improvement.score = recipe.score(next).tally
   yield improvement
 
 when isMainModule:

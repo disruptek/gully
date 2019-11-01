@@ -77,6 +77,7 @@ proc lengths*(series: seq[TokenText]): LineLengths =
 
 proc render*(series: seq[TokenText]; syntax: Syntax): string =
   ## render a series of token/text in the given syntax
+  assert syntax != nil, "cannot render with syntax"
   for tt in series.items:
     case tt.kind:
     of Comment:
@@ -108,17 +109,9 @@ proc render*(parsed: ParsedDocument): string =
     else:
       result.add "`" & tt.text & "`"
 
-proc parseDocument*(input: string; syntax: Syntax = nil): ParsedDocument =
-  var
-    syn: Syntax
-
-  # use nim syntax if none is provided
-  if syntax == nil:
-    syn = Syntax(docs: "##", eolc: "#", tabsize: 2,
-                 cheader: "#[", cfooter: "]#", cleader: "# ",
-                 dheader: "##[", dfooter: "]##", dleader: "## ")
-  else:
-    syn = syntax
+proc parseDocument*(input: string; syntax: Syntax): ParsedDocument =
+  ## parse a document from a string
+  assert syntax != nil, "nil syntax is not supported"
 
   # we need well-formed input in order to parse the document
   if input.len == 0 or input[^1] != '\n':
@@ -126,7 +119,7 @@ proc parseDocument*(input: string; syntax: Syntax = nil): ParsedDocument =
 
   # accumulate a record of tokens and their values in this result
   var
-    record = ParsedDocument(ok: false, syntax: syn)
+    record = ParsedDocument(ok: false, syntax: syntax)
 
   # FIXME: cleanup, cache peg
   let
@@ -209,7 +202,7 @@ proc parseDocument*(input: string; syntax: Syntax = nil): ParsedDocument =
   record.ok = parsed.ok
   result = record
 
-proc parseDocument*(stream: Stream; syntax: Syntax = nil): ParsedDocument =
+proc parseDocument*(stream: Stream; syntax: Syntax): ParsedDocument =
   ## parse a stream into tokens
   let
     input = stream.readAll

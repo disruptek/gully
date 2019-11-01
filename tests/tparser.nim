@@ -8,6 +8,7 @@ import gully/parser
 suite "parser":
   let
     defaultRecipe {.used,compileTime.} = createDefaultRecipe()
+    syntax = defaultRecipe.chooseSyntax()
 
   test "a series of unfortunate parses":
     let
@@ -57,7 +58,7 @@ suite "parser":
       }.toOrderedTable
     for text, expected in inputs.pairs:
       let
-        parsed = parseDocument(text & "\n")
+        parsed = parseDocument(text & "\n", syntax)
       if not parsed.ok or $parsed.asTokenList != expected:
         checkpoint "input: `" & text & "`"
         checkpoint "expected: `" & expected & "`"
@@ -82,7 +83,7 @@ suite "parser":
       }.toOrderedTable
     for text, expected in inputs.pairs:
       let
-        parsed = parseDocument(text & "\n")
+        parsed = parseDocument(text & "\n", syntax)
       if not parsed.ok or $parsed.render != expected:
         checkpoint "input: `" & text & "`"
         checkpoint "expected: " & expected
