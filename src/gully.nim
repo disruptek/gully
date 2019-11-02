@@ -7,6 +7,7 @@ import random
 from sugar import `=>`, `->`
 
 import cutelog
+import bump
 import gully/parser
 
 const
@@ -203,10 +204,6 @@ iterator items*(document: Document): Line =
     for line in group:
       yield line
 
-when false:
-  proc `$`(line: Line): string =
-    result = line.input
-
 proc len*(line: Line): int =
   for tt in line.tokens:
     result.inc tt.text.len + tt.lhs + tt.rhs
@@ -337,38 +334,6 @@ proc newRecipe*(): Recipe =
   new result
   result.mutations = newOrderedTable[MutationKind, Mutation]()
   result.arguments = newTable[string, MutationKind]()
-
-when false:
-  proc `$`*(document: Document): string =
-    var
-      count: int
-      size = document.len
-    for line in document.items:
-      # if the last line is empty, lacking even a terminator, omit it from output
-      if count == size:
-        if line.terminator.len == 0:
-          break
-      debug &"{count}: {line.work} + terminator of {line.terminator.len}"
-      result &= $line
-      count.inc
-
-  proc terminator(line: string): string =
-    ## any combination of newline characters terminating the string
-    for i in line.low .. line.high:
-      if i < line.len:
-        if line[^(i + 1)] in EndOfLine:
-          result = line[^(i + 1)] & result
-
-  proc newLine(content: string): Line {.deprecated.} =
-    var
-      terminator = content.terminator
-      work: string
-    if terminator.len == 0:
-      work = content
-    else:
-      work = content[0 .. ^(terminator.len + 1)]
-    result = Line(input: content, work: work,
-                  terminator: terminator)
 
 proc newLine(document: Document; input: seq[TokenText]): Line =
   ## create a new ``Line`` from a series of tokens
@@ -869,6 +834,13 @@ when isMainModule:
                                useStderr = true, fmtStr = "")
     logger = newCuteLogger(console)
   addHandler(logger)
+
+  let
+    version = projectVersion("gully")
+  if version.isSome:
+    clCfg.version = $version.get
+  else:
+    clCfg.version = "(unknown version)"
 
   var
     # make a seq into which we'll store the parsed options in order;
