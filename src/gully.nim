@@ -1,4 +1,5 @@
 import macros
+import options
 import streams
 import strutils except Whitespace
 import strformat
@@ -835,7 +836,7 @@ when isMainModule:
     logger = newCuteLogger(console)
   addHandler(logger)
 
-  let
+  const
     version = projectVersion("gully")
   if version.isSome:
     clCfg.version = $version.get
@@ -900,6 +901,6 @@ when isMainModule:
         quit result
       except ParseError:
         discard
-      except HelpOnly:
+      except VersionOnly, HelpOnly:
         discard
       quit 1
