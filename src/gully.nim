@@ -837,7 +837,7 @@ when isMainModule:
   addHandler(logger)
 
   const
-    version = projectVersion("gully")
+    version = projectVersion()
   if version.isSome:
     clCfg.version = $version.get
   else:
