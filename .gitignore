@@ -2,4 +2,5 @@
 src/gully.out
 tests/tdoc
 tests/tparser
+tests/tmutations
 .cache
