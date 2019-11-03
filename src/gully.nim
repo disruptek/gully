@@ -720,7 +720,8 @@ proc scoreByLine[T: Document | LineGroup](many: T; mutation: Mutation;
     score += predicate(mutation, line)
   if count == 0:
     result = 1.0
-  result = score / count.float
+  else:
+    result = score / count.float
 
 proc scoreByGroup(document: Document; mutation: Mutation;
                   predicate: (Mutation, LineGroup) -> Score): Score =
@@ -745,27 +746,49 @@ proc measureTrailingWhitespace(text: string; tabSize: int): int =
     else:
       break
 
-proc scorePadding(mutation: Mutation; line: Line): Score =
-  assert TabSize in mutation.recipe
-  result = 1.0
+proc commentPadDistance(recipe: Recipe; line: Line): Option[int] =
+  ## if there's a comment following code, measure its
+  ## distance from the code
+  assert TabSize in recipe
   for index, value in line.tokens.pairs:
-    block:
+    block found:
       # find any comments
       if value.kind in {MlCode, MlDocs, Comment, Docs}:
         # that aren't at the beginning of the line
         if index > 0:
           # and precede code
           if line.tokens[index - 1].kind == Token.Code:
-            break
-      continue
+            break found
+      continue # the loop
 
     let
-      ts = mutation.recipe[TabSize].integer
+      ts = recipe[TabSize].integer
       tw = measureTrailingWhitespace(line.tokens[index - 1].text,
                                      tabSize = ts)
-    if tw < mutation.integer:
-      result = tw.float / mutation.integer.float
-    return
+    return some(tw)
+
+proc scorePadding(mutation: Mutation; line: Line): Score =
+  result = 1.0
+  let
+    distance = commentPadDistance(mutation.recipe, line)
+  if distance.isSome:
+    if distance.get < mutation.integer:
+      result = distance.get.float / mutation.integer.float
+
+proc scoreFlow(mutation: Mutation; line: Line): Score =
+  assert Padding in mutation.recipe
+  result = 1.0
+  let
+    distance = commentPadDistance(mutation.recipe, line)
+    pad = mutation.recipe[Padding].integer
+  if distance.isSome:
+    let
+      far = abs(pad - distance.get)
+    if far > 0:
+      if far > pad:
+        result = 0.0
+      else:
+        result = far.float / pad.float
 
 proc scoreMaxWidth(mutation: Mutation; line: Line): Score =
   let
@@ -773,37 +796,36 @@ proc scoreMaxWidth(mutation: Mutation; line: Line): Score =
   result = 1.0
   if l > mutation.integer:
     result -= min(1.0, (l - mutation.integer).float / mutation.integer.float)
-  debug &"score for {mutation} is {result} and l is {l}"
 
-proc score(mutation: Mutation; document: Document): Score =
-  var
-    score: float
+proc score*(mutation: Mutation; document: Document): Option[Score] =
+  ## score a document with the given mutation
   case mutation.kind:
   of MaxWidth:
     # the lines should be no longer than X characters
-    result = document.scoreByLine(mutation, scoreMaxWidth)
+    result = document.scoreByLine(mutation, scoreMaxWidth).some
   of Padding:
-    # any eol comments should be separated from code by X characters
-    result = document.scoreByLine(mutation, scorePadding)
-  of Language, Header, Footer, Leader, TabSize:
-    result = 1.0
+    # any eol comments should be separated from code by >=X characters
+    result = document.scoreByLine(mutation, scorePadding).some
+  of Flow:
+    # flow is basically a rigid and precise enforcement of Padding
+    result = document.scoreByLine(mutation, scoreFlow).some
+  of Language, Header, Footer, Leader, TabSize, Indent, Grow:
+    discard
   else:
     # FIXME: this should eventually be a defect
     when false:
       raise newException(Defect, &"{mutation.kind} scoring unimplemented")
       warn &"{mutation.kind} scoring unimplemented"
-    result = 1.0
-    return
-  debug &"score for {mutation} is {score}"
 
 proc tally*(card: ScoreCard): Score =
   ## tally a scorecard
   var
     score = 1.0 # nothin' from nothin' leaves nothin'
+    count = 2.0
+  # successive scores count for less
   for s in card.values:
-    score = score * 2.0 + s
-    if score > 0.0:
-      score = score / 3.0
+    score = score * ((count - 1) / count) + (s / count)
+    count += 1.0
   result = score
 
 proc score*(recipe: Recipe; document: Document): ScoreCard =
@@ -811,9 +833,13 @@ proc score*(recipe: Recipe; document: Document): ScoreCard =
   const tableSize = 32
   assert ord(MutationKind.high) <= tableSize
   result = newOrderedTable[MutationKind, Score](tableSize)
-  # each successfive metric is worth half as much to the final result
+  # the order informs the weight of each metric in the tally
   for mutation in recipe.order:
-    result[mutation.kind] = mutation.score(document)
+    let
+      score = mutation.score(document)
+    if score.isSome:
+      debug &"score for {mutation.kind} is {score.get}"
+      result[mutation.kind] = score.get
 
 proc newImprovement(recipe: Recipe;
                     original: Document; improved: Document): Improvement =
