@@ -1,3 +1,5 @@
+# **WIP and probably doesn't do anything useful**
+
 # gully
 
 You pass it code on input and it adds an area you can use to write comments
@@ -28,12 +30,12 @@ else:
 Add a gully.
 
 ```nim
-when defined(debug):           # 
-  const logLevel = lvlDebug    # 
-elif defined(release):         # 
-  const logLevel = lvlNotice   # 
-else:                          # 
-  const logLevel = lvlInfo     # 
+when defined(debug):           #
+  const logLevel = lvlDebug    #
+elif defined(release):         #
+  const logLevel = lvlNotice   #
+else:                          #
+  const logLevel = lvlInfo     #
 ```
 
 ### Input
@@ -85,7 +87,7 @@ else:                                       # you are probably interested in the
 
 ```
 Usage:
-  gully [optional-params] 
+  gully [optional-params]
 a code comment formatter
 Options(opt-arg sep :|=|spc):
   -h, --help                                    print this cligen-erated help
